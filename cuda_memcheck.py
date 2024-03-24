@@ -1,30 +1,51 @@
-import torch
+import numpy as np
+from numba import cuda
+import os
+import subprocess
 
-def check_cuda():
-    # Überprüfen, ob CUDA verfügbar ist
-    cuda_available = torch.cuda.is_available()
-    print(f"CUDA verfügbar: {cuda_available}")
+def check_cuda_version():
+    cuda_version_cmd = "nvcc --version"
+    nvidia_smi_cmd = "nvidia-smi"
+    
+    # Check CUDA version
+    print("CUDA Version:")
+    try:
+        cuda_version_output = subprocess.check_output(cuda_version_cmd.split(), stderr=subprocess.STDOUT).decode()
+        print(cuda_version_output)
+    except subprocess.CalledProcessError as e:
+        print("Error:", e.output.decode())
+    
+    # Check NVIDIA-SMI info
+    print("\nNVIDIA-SMI:")
+    try:
+        nvidia_smi_output = subprocess.check_output(nvidia_smi_cmd.split(), stderr=subprocess.STDOUT).decode()
+        print(nvidia_smi_output)
+    except subprocess.CalledProcessError as e:
+        print("Error:", e.output.decode())
 
-    if cuda_available:
-        # Anzahl und Name der CUDA-Geräte
-        num_devices = torch.cuda.device_count()
-        print(f"Anzahl verfügbarer CUDA-Geräte: {num_devices}")
-        
-        for i in range(num_devices):
-            print(f"Gerät {i}: {torch.cuda.get_device_name(i)}")
-            
-        # Einfache Tensor-Operationen mit CUDA
-        tensor = torch.rand((1000, 1000))
-        
-        # Verschieben des Tensors auf das erste CUDA-Gerät, wenn verfügbar
-        device = torch.device("cuda:0")  # Ändere den Index, wenn du ein anderes Gerät verwenden möchtest
-        tensor = tensor.to(device)
-        
-        # Einfache Berechnung
-        result = tensor * tensor
-        print("Berechnung auf dem CUDA-Gerät erfolgreich!")
-    else:
-        print("Keine CUDA-Geräte verfügbar.")
+# Test the function
+check_cuda_version()
 
-# Führen die Überprüfung aus
-check_cuda()
+
+@cuda.jit
+def add(a, b, c):
+    i = cuda.grid(1)
+    c[i] = a[i] + b[i]
+
+N = 100
+a = np.arange(N)
+b = np.arange(N)
+c = np.zeros(N)
+
+d_a = cuda.to_device(a)
+d_b = cuda.to_device(b)
+d_c = cuda.to_device(c)
+
+threads_per_block = 32
+blocks_per_grid = (N + threads_per_block - 1) // threads_per_block
+
+add[blocks_per_grid, threads_per_block](d_a, d_b, d_c)
+
+result = d_c.copy_to_host()
+print(result)
+
